@@ -1,212 +1,110 @@
 # XutsFileBackup
 
-一款基于 **Tauri v2 + Rust + React** 的 Windows 桌面文件镜像备份工具。将源目录单向镜像到目标目录，并提供文件索引、全文搜索与层级标签管理。
+Windows 桌面文件备份工具。将一个文件夹的内容实时镜像到另一个文件夹，并支持对备份文件进行搜索和标签管理。
 
 ---
 
-## 功能特性
+## 功能
 
-### 镜像同步
-- **单向镜像**：源目录 A → 目标目录 B，B 完全跟随 A
-  - A 新增 / 修改的文件 → 自动复制到 B
-  - A 删除的文件 → B 同步删除
-  - A 中的目录结构 → 完整复制，孤立目录自动清理
-- **三种触发方式**：
-  - 手动触发（一次性同步）
-  - 实时监控（文件系统事件驱动，秒级响应）
-  - 定时触发（Cron 表达式，如 `0 2 * * *` 每天凌晨 2 点）
-- **过滤规则**：Glob 路径排除（如 `node_modules/**`、`*.tmp`）
+### 自动备份
 
-### 标签系统
-- 多级层级标签树（自引用结构，支持无限嵌套）
-- 对任意已索引文件 / 目录打标签，可附加备注
-- 搜索时支持多标签 AND / OR 过滤，且自动向下展开子标签
-- 标签仅存于应用数据库，不修改文件系统
+设置一个**源文件夹**和一个**目标文件夹**，XutsFileBackup 会保持两者内容完全一致：
 
-### 搜索与浏览
-- FTS5 全文检索（文件名 + 相对路径）
-- 结合标签过滤，支持 AND（所有标签都满足）或 OR（任意标签满足）
-- 文件浏览器支持目录树导航（面包屑路径栏）
-- 已打标签的文件 / 目录在文件列表中显示对应颜色圆点
+- 源文件夹新增或修改文件 → 自动同步到目标文件夹
+- 源文件夹删除文件 → 目标文件夹同步删除
+- 子目录结构完整保留，已删除的目录自动清理
 
-### 其他
-- 系统托盘：关闭窗口最小化到托盘，左键恢复，右键菜单可退出
-- 同步日志面板：每次同步的详细记录（扫描数、复制数、删除数、错误）
-- React 错误边界：UI 崩溃时显示友好提示，支持重试
+可以创建多个备份任务，分别管理不同的文件夹对。
 
----
+### 三种同步模式
 
-## 技术栈
-
-| 层 | 技术 |
-|----|------|
-| 桌面框架 | [Tauri v2](https://tauri.app/) |
-| 后端 | Rust + tokio 异步运行时 |
-| 前端 | React 19 + TypeScript |
-| UI 样式 | Tailwind CSS |
-| 数据库 | SQLite（rusqlite + FTS5 全文索引） |
-| 文件监控 | [notify](https://github.com/notify-rs/notify) crate |
-| 定时任务 | [cron](https://crates.io/crates/cron) + chrono |
-| 文件哈希 | xxHash-64（内容变更校验） |
-
----
-
-## 目录结构
-
-```
-XutsFileBackup/
-├── src/                        # React 前端
-│   ├── App.tsx                 # 根组件，状态管理
-│   ├── main.tsx                # 入口，挂载错误边界
-│   ├── lib/
-│   │   └── api.ts              # Tauri IPC 封装
-│   └── components/
-│       ├── Sidebar.tsx         # 任务列表 + 标签树
-│       ├── SearchBar.tsx       # 搜索框 + 标签筛选条
-│       ├── FileTable.tsx       # 文件浏览器（树 / 平铺双模式）
-│       ├── FileTagEditor.tsx   # 文件标签管理弹窗
-│       ├── TaskDialog.tsx      # 任务创建 / 编辑对话框
-│       ├── TagDialog.tsx       # 标签创建 / 编辑对话框
-│       ├── SyncLogPanel.tsx    # 同步日志面板
-│       ├── Toasts.tsx          # 通知 Toast
-│       └── ErrorBoundary.tsx   # React 错误边界
-├── src-tauri/                  # Rust 后端
-│   ├── src/
-│   │   ├── lib.rs              # 应用入口，托盘，窗口事件
-│   │   ├── commands.rs         # Tauri Command 注册
-│   │   ├── db/
-│   │   │   ├── mod.rs          # DbState（Mutex<Connection>）
-│   │   │   └── migrations.rs   # 数据库版本迁移
-│   │   ├── sync/
-│   │   │   ├── engine.rs       # 核心同步逻辑（diff + 执行）
-│   │   │   ├── scanner.rs      # 目录扫描
-│   │   │   ├── diff.rs         # 新增 / 修改 / 删除差量计算
-│   │   │   └── executor.rs     # 文件复制 / 删除 / 哈希
-│   │   ├── watcher.rs          # 文件系统实时监控（notify）
-│   │   ├── scheduler.rs        # Cron 定时调度
-│   │   ├── search.rs           # FTS5 + 标签 CTE 搜索
-│   │   ├── tags.rs             # 标签 CRUD + 关联管理
-│   │   ├── task_manager.rs     # 任务 CRUD
-│   │   └── error.rs            # 统一错误类型
-│   ├── icons/                  # 应用图标
-│   ├── capabilities/           # Tauri 权限配置
-│   └── tauri.conf.json         # Tauri 构建配置
-├── DESIGN.md                   # 系统设计文档
-├── package.json
-└── README.md
-```
-
----
-
-## 数据库 Schema
-
-```sql
--- 备份任务
-tasks (id, name, source_path, target_path, trigger_type, cron_expr, filter_rules, enabled, created_at)
-
--- 文件索引（含目录，kind = 'file' | 'dir'）
-file_records (id, task_id, relative_path, size, mtime, content_hash, status, last_synced_at, kind)
-
--- 标签（自引用层级树）
-tags (id, name, color, parent_id, description, created_at)
-
--- 文件-标签多对多
-file_tags (file_id, tag_id, tagged_at, note)
-
--- 同步日志
-sync_logs (id, task_id, started_at, finished_at, files_scanned, files_copied, files_deleted, bytes_transferred, errors, status)
-
--- FTS5 全文索引
-file_search_index (file_id UNINDEXED, filename, relative_path, tag_names)
-```
-
----
-
-## 开发环境要求
-
-| 工具 | 版本 |
+| 模式 | 说明 |
 |------|------|
-| [Rust](https://rustup.rs/) | 1.77+ |
-| [Node.js](https://nodejs.org/) | 18+ |
-| [Visual Studio C++ 构建工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | 2019+ |
-| Windows | 10 / 11 |
+| 手动 | 点击按钮立即执行一次同步 |
+| 实时监控 | 检测到文件变动后秒级自动同步 |
+| 定时同步 | 按 Cron 表达式定时执行，如每天凌晨自动备份 |
 
-> macOS / Linux 未经测试，Tauri v2 理论上支持，但文件路径处理和图标需适配。
+### 文件过滤
+
+在任务设置中填写排除规则，跳过不需要备份的文件，例如：
+
+```
+node_modules/**
+*.tmp
+.git/**
+```
+
+### 标签管理
+
+对备份文件夹中的任意文件或目录打标签，方便日后归类和查找：
+
+- 标签支持层级嵌套（如「工作 → 财务 → 合同」）
+- 每个标签可设置颜色，已打标签的文件在列表中显示彩色圆点
+- 标签数据仅保存在应用内，不影响原始文件
+
+### 搜索
+
+在顶部搜索框输入文件名或路径关键词，可在所有备份任务中快速定位文件。支持按标签过滤，多个标签之间可选择「满足任意一个」或「同时满足全部」。
+
+### 同步日志
+
+底部日志面板记录每次同步的结果，包括同步文件数量和出错信息，方便确认备份是否正常完成。
+
+### 系统托盘
+
+关闭主窗口后程序继续在后台运行，实时监控和定时任务不会中断。单击托盘图标可重新打开窗口，右键菜单可退出程序。
 
 ---
 
-## 快速开始
+## 安装
 
-```bash
-# 1. 克隆仓库
-git clone https://github.com/xu-tiansong/XutsFileBackup.git
-cd XutsFileBackup
+前往 [Releases](https://github.com/xu-tiansong/XutsFileBackup/releases) 页面下载最新版本：
 
-# 2. 安装前端依赖
-npm install
+| 文件 | 说明 |
+|------|------|
+| `XutsFileBackup_x.x.x_x64-setup.exe` | 安装向导（推荐） |
+| `XutsFileBackup_x.x.x_x64_en-US.msi` | Windows Installer |
 
-# 3. 开发模式（热重载）
-npm run tauri dev
+下载后双击运行安装程序，按提示完成安装即可。
 
-# 4. 生产构建
-npm run tauri build
-# 输出：src-tauri/target/release/bundle/
-#   nsis/XutsFileBackup_0.1.0_x64-setup.exe   ← NSIS 安装向导
-#   msi/XutsFileBackup_0.1.0_x64_en-US.msi    ← Windows Installer
-```
+**系统要求：** Windows 10 / 11（64 位）
 
 ---
 
-## 同步引擎工作流
+## 使用说明
 
-```
-Phase A  读取任务配置 + 从数据库加载当前文件索引快照
-Phase B  遍历源目录，镜像所有子目录到目标目录，更新 DB 中 kind='dir' 记录
-Phase C  扫描源目录文件列表（跳过目录）
-Phase D  计算差量（新增 / 修改 / 删除），逐文件执行：
-           新增 → 复制 + 写入 file_records + 写入 FTS5 索引
-           修改 → 比对 xxHash，内容变更则复制，更新 file_records
-           删除 → 删除目标文件，CASCADE 清除 file_tags，删除 FTS5 条目
-Phase E  清理目标目录中已不存在于源目录的孤立子目录（深度优先）
-Phase G  写入同步日志
-```
+### 创建第一个备份任务
 
----
+1. 点击左侧边栏底部的 **「+ 新建任务」**
+2. 填写任务名称、选择源文件夹和目标文件夹
+3. 选择同步模式（推荐「实时监控」）
+4. 点击保存，任务会立即开始监控
 
-## 标签搜索原理
+### 手动触发同步
 
-标签过滤使用递归 CTE 向下展开整棵子树，再 JOIN file_tags：
+点击任务右侧的 **「同步」** 按钮，立即执行一次完整同步。
 
-```sql
--- 搜索"工作"标签时，自动命中"财务/合同"、"财务/报销"、"会议"等子标签下的所有文件
-WITH RECURSIVE tag_tree(id, root_id) AS (
-  SELECT id, id FROM tags WHERE id IN (?)
-  UNION ALL
-  SELECT t.id, tt.root_id FROM tags t
-  JOIN tag_tree tt ON t.parent_id = tt.id
-),
-tag_match(file_id) AS (
-  SELECT ft.file_id FROM file_tags ft
-  JOIN tag_tree tt ON ft.tag_id = tt.id
-  GROUP BY ft.file_id
-  -- AND 模式：HAVING COUNT(DISTINCT tt.root_id) = <n>
-)
-SELECT fr.* FROM file_records fr
-JOIN tag_match tm ON fr.id = tm.file_id
-WHERE fr.status = 'active'
-```
+### 给文件打标签
+
+1. 在文件列表中将鼠标悬停到任意文件或文件夹上
+2. 点击行右侧出现的 **🏷** 按钮
+3. 在弹出的面板中选择已有标签，或前往侧边栏创建新标签
+
+### 搜索文件
+
+在顶部搜索框输入关键词，结果会实时更新。点击搜索框右侧的标签筛选条可叠加标签过滤。
 
 ---
 
-## 数据存储位置
+## 数据存储
 
-应用数据库（`xuts.db`）存储于系统标准应用数据目录：
+所有备份任务配置、文件索引和标签数据保存在：
 
 ```
-Windows: C:\Users\<用户名>\AppData\Roaming\com.xuts.filebackup\xuts.db
+C:\Users\<用户名>\AppData\Roaming\com.xuts.filebackup\xuts.db
 ```
 
-卸载应用不会自动删除此文件，标签和索引数据得以保留。
+卸载应用不会删除此文件，数据可以保留。
 
 ---
 
