@@ -1,0 +1,31 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="88" fill="#3730A3"/>
+
+  <!-- Left document (source) -->
+  <rect x="58" y="170" width="152" height="192" rx="16" fill="#C7D2FE"/>
+  <!-- dog-ear fold -->
+  <polygon points="166,170 210,170 210,214" fill="#A5B4FC"/>
+  <rect x="166" y="170" width="44" height="44" rx="0" fill="#A5B4FC"/>
+  <!-- text lines -->
+  <rect x="76" y="228" width="88" height="11" rx="5.5" fill="#6366F1"/>
+  <rect x="76" y="252" width="68" height="11" rx="5.5" fill="#6366F1"/>
+  <rect x="76" y="276" width="78" height="11" rx="5.5" fill="#6366F1"/>
+  <rect x="76" y="300" width="58" height="11" rx="5.5" fill="#6366F1"/>
+
+  <!-- Arrow (bold, golden-white) -->
+  <line x1="228" y1="266" x2="284" y2="266" stroke="#FDE68A" stroke-width="26" stroke-linecap="round"/>
+  <polyline points="264,244 288,266 264,288" stroke="#FDE68A" stroke-width="26"
+            stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Right document (destination) -->
+  <rect x="302" y="150" width="152" height="192" rx="16" fill="white"/>
+  <!-- dog-ear fold -->
+  <polygon points="410,150 454,150 454,194" fill="#E0E7FF"/>
+  <rect x="410" y="150" width="44" height="44" rx="0" fill="#E0E7FF"/>
+  <!-- text lines -->
+  <rect x="320" y="208" width="88" height="11" rx="5.5" fill="#A5B4FC"/>
+  <rect x="320" y="232" width="68" height="11" rx="5.5" fill="#A5B4FC"/>
+  <rect x="320" y="256" width="78" height="11" rx="5.5" fill="#A5B4FC"/>
+  <rect x="320" y="280" width="58" height="11" rx="5.5" fill="#A5B4FC"/>
+</svg>
