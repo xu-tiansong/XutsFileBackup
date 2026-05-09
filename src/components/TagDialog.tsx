@@ -5,7 +5,7 @@ interface Props {
   tag: Tag | null; // null = create new
   allTags: Tag[];
   onSave: (tag: Tag) => void;
-  onDelete?: (tagId: number) => void;
+  onDelete?: (tagId: number, descendantIds: number[]) => void;
   onClose: () => void;
 }
 
@@ -20,10 +20,11 @@ export function TagDialog({ tag, allTags, onSave, onDelete, onClose }: Props) {
   const [color, setColor] = useState(tag?.color ?? "#6366f1");
   const [parentId, setParentId] = useState<number | null>(tag?.parentId ?? null);
   const [saving, setSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  // "idle" | "ask" (has children) | "confirm" (no children)
+  const [deleteStep, setDeleteStep] = useState<"idle" | "ask" | "confirm">("idle");
   const [error, setError] = useState("");
 
-  // Exclude self and descendants from parent options to avoid cycles
+  // Collect self + all descendants (to exclude from parent options and for cascade delete info)
   const forbidden = new Set<number>();
   if (tag) {
     forbidden.add(tag.id);
@@ -38,6 +39,9 @@ export function TagDialog({ tag, allTags, onSave, onDelete, onClose }: Props) {
     collectDescendants(tag.id);
   }
   const parentOptions = allTags.filter((t) => !forbidden.has(t.id));
+  // descendants = forbidden minus self
+  const descendantIds = tag ? [...forbidden].filter((id) => id !== tag.id) : [];
+  const descendantCount = descendantIds.length;
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -61,13 +65,22 @@ export function TagDialog({ tag, allTags, onSave, onDelete, onClose }: Props) {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (cascade: boolean) => {
     if (!tag) return;
     try {
-      await api.deleteTag(tag.id);
-      onDelete?.(tag.id);
+      await api.deleteTag(tag.id, cascade);
+      onDelete?.(tag.id, cascade ? descendantIds : []);
     } catch (e: unknown) {
       setError(String(e));
+      setDeleteStep("idle");
+    }
+  };
+
+  const onClickDeleteBtn = () => {
+    if (descendantCount > 0) {
+      setDeleteStep("ask");
+    } else {
+      setDeleteStep("confirm");
     }
   };
 
@@ -154,28 +167,60 @@ export function TagDialog({ tag, allTags, onSave, onDelete, onClose }: Props) {
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-4 border-t border-gray-800">
           <div>
-            {tag &&
-              (confirmDelete ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-red-400">确认删除？</span>
-                  <button onClick={handleDelete} className="btn-danger text-xs py-1 px-3">
-                    删除
+            {tag && deleteStep === "idle" && (
+              <button
+                onClick={onClickDeleteBtn}
+                className="text-xs text-red-500 hover:text-red-400"
+              >
+                删除标签
+              </button>
+            )}
+
+            {tag && deleteStep === "confirm" && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-red-400">确认删除？</span>
+                <button
+                  onClick={() => handleDelete(false)}
+                  className="btn-danger text-xs py-1 px-3"
+                >
+                  删除
+                </button>
+                <button
+                  onClick={() => setDeleteStep("idle")}
+                  className="btn-secondary text-xs py-1 px-3"
+                >
+                  取消
+                </button>
+              </div>
+            )}
+
+            {tag && deleteStep === "ask" && (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400">
+                  此标签含 {descendantCount} 个子标签，如何处理？
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleDelete(true)}
+                    className="btn-danger text-xs py-1 px-2"
+                  >
+                    同时删除所有子标签
                   </button>
                   <button
-                    onClick={() => setConfirmDelete(false)}
-                    className="btn-secondary text-xs py-1 px-3"
+                    onClick={() => handleDelete(false)}
+                    className="btn-secondary text-xs py-1 px-2"
+                  >
+                    仅删除此标签
+                  </button>
+                  <button
+                    onClick={() => setDeleteStep("idle")}
+                    className="btn-ghost text-xs py-1 px-2"
                   >
                     取消
                   </button>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="text-xs text-red-500 hover:text-red-400"
-                >
-                  删除标签
-                </button>
-              ))}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary">

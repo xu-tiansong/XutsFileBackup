@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -124,9 +124,67 @@ pub fn update_tag(
     Ok(Tag { id, name, color, parent_id, description, created_at })
 }
 
-pub fn delete_tag(state: &DbState, id: i64) -> AppResult<()> {
+pub fn delete_tag(state: &DbState, id: i64, with_descendants: bool) -> AppResult<()> {
     let conn = state.0.lock().map_err(|_| AppError::Other("DB lock".into()))?;
-    conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+
+    if with_descendants {
+        // Collect entire subtree (root included) via recursive CTE.
+        let ids: Vec<i64> = {
+            let mut stmt = conn.prepare(
+                "WITH RECURSIVE subtree(id) AS (
+                   SELECT ?1
+                   UNION ALL
+                   SELECT t.id FROM tags t JOIN subtree s ON t.parent_id = s.id
+                 )
+                 SELECT id FROM subtree",
+            )?;
+            let v: Vec<i64> = stmt.query_map(params![id], |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            v
+        };
+
+        // Collect affected files before tags (and their file_tags) are removed.
+        let ph: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let affected: Vec<i64> = {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT DISTINCT file_id FROM file_tags WHERE tag_id IN ({ph})"
+            ))?;
+            let v: Vec<i64> = stmt.query_map(params_from_iter(ids.iter()), |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            v
+        };
+
+        // Delete the whole subtree. file_tags CASCADE; parent_id SET NULL is harmless.
+        conn.execute(
+            &format!("DELETE FROM tags WHERE id IN ({ph})"),
+            params_from_iter(ids.iter()),
+        )?;
+
+        for fid in affected {
+            rebuild_file_fts(&conn, fid)?;
+        }
+    } else {
+        // Collect files that had this tag before removing it.
+        let affected: Vec<i64> = {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT file_id FROM file_tags WHERE tag_id = ?1",
+            )?;
+            let v: Vec<i64> = stmt.query_map(params![id], |row| row.get(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            v
+        };
+
+        // Children's parent_id becomes NULL (ON DELETE SET NULL) — they become root tags.
+        conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+
+        for fid in affected {
+            rebuild_file_fts(&conn, fid)?;
+        }
+    }
+
     Ok(())
 }
 

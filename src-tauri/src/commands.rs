@@ -93,8 +93,8 @@ pub fn update_tag(
 }
 
 #[tauri::command]
-pub fn delete_tag(state: State<'_, DbState>, tag_id: i64) -> AppResult<()> {
-    tags::delete_tag(&state, tag_id)
+pub fn delete_tag(state: State<'_, DbState>, tag_id: i64, with_descendants: bool) -> AppResult<()> {
+    tags::delete_tag(&state, tag_id, with_descendants)
 }
 
 #[tauri::command]

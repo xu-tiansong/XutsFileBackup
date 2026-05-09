@@ -142,7 +142,8 @@ export const api = {
       parentId: payload.parentId ?? null,
       description: null,
     }),
-  deleteTag: (tagId: number) => invoke<void>("delete_tag", { tagId }),
+  deleteTag: (tagId: number, withDescendants = false) =>
+    invoke<void>("delete_tag", { tagId, withDescendants }),
 
   // File-tag associations
   addFileTag: (fileId: number, tagId: number, note?: string) =>

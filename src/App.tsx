@@ -186,10 +186,11 @@ export default function App() {
     api.getTagTree().then(setTagTree).catch(console.error);
   };
 
-  const handleDeleteTag = (deletedTagId: number) => {
+  const handleDeleteTag = (deletedTagId: number, descendantIds: number[]) => {
     setTagDialogOpen(false);
     setEditingTag(null);
-    setActiveTagIds((prev) => prev.filter((id) => id !== deletedTagId));
+    const removed = new Set([deletedTagId, ...descendantIds]);
+    setActiveTagIds((prev) => prev.filter((id) => !removed.has(id)));
     addToast("标签已删除", "info");
     api.getTagTree().then(setTagTree).catch(console.error);
   };
